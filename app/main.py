@@ -138,7 +138,7 @@ class LabelApp(ctk.CTk):
         self.label_val_y.grid(row=2, column=1, padx=5)
         
         self.btn_duplicate_el = ctk.CTkButton(self.pos_frame, text="Duplicate", fg_color="orange", command=self.duplicate_element_action)
-        self.btn_duplicate_el.grid(row=3, column=0, pady=10, data=5, sticky="ew")
+        self.btn_duplicate_el.grid(row=3, column=0, pady=10, padx=5, sticky="ew")
 
         self.btn_delete_el = ctk.CTkButton(self.pos_frame, text="Delete", fg_color="red", command=self.delete_element)
         self.btn_delete_el.grid(row=3, column=1, pady=10, padx=5, sticky="ew")
