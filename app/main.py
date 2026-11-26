@@ -55,6 +55,10 @@ class LabelApp(ctk.CTk):
         self.selected_element_id = None
         self.current_project_path = None
         self.is_dirty = False
+        self.autosave_var = ctk.BooleanVar(value=True)
+        self._autosave_draft_path = self._default_autosave_draft_path()
+        self._autosave_after_id = None
+        self._autosaving = False
         self._recent_store_path = self._default_recent_store_path()
         self.recent_files = self._load_recent_files()
         self.zoom_mode = "Fit"
@@ -93,6 +97,7 @@ class LabelApp(ctk.CTk):
         self.update_control_state()
         self._update_history_buttons()
         self.set_status("Ready — Add text, image, or shape to begin")
+        self.after(150, self._check_restore_autosave_draft)
 
     # ------------------------------------------------------------------
     # Windows 11 Native Window Styling
@@ -863,9 +868,97 @@ class LabelApp(ctk.CTk):
         else:
             self.title(f"Label Printer Studio — {star}{self.designer.width_mm} × {self.designer.height_mm} mm")
 
-    def _set_dirty(self, dirty=True):
+    def _set_dirty(self, dirty=True, immediate_autosave=False):
         self.is_dirty = bool(dirty)
         self._refresh_window_title()
+        if self.is_dirty and self.autosave_var.get() and not self._autosaving:
+            if immediate_autosave:
+                self._perform_autosave()
+            else:
+                self._schedule_autosave()
+
+    def _cancel_scheduled_autosave(self):
+        if self._autosave_after_id is not None:
+            try:
+                self.after_cancel(self._autosave_after_id)
+            except Exception:
+                pass
+            self._autosave_after_id = None
+
+    def _schedule_autosave(self, delay_ms=250):
+        self._cancel_scheduled_autosave()
+        self._autosave_after_id = self.after(delay_ms, self._perform_autosave)
+
+    def _clear_autosave_draft(self):
+        try:
+            if os.path.exists(self._autosave_draft_path):
+                os.remove(self._autosave_draft_path)
+        except OSError:
+            pass
+
+    def _perform_autosave(self):
+        self._cancel_scheduled_autosave()
+        if not self.autosave_var.get() or not self.is_dirty or self._autosaving:
+            return False
+        self._autosaving = True
+        try:
+            if self.current_project_path:
+                if self.designer.save_project(self.current_project_path):
+                    self.is_dirty = False
+                    self._refresh_window_title()
+                    folder = os.path.dirname(self.current_project_path)
+                    filename = os.path.basename(self.current_project_path)
+                    self.lbl_project_path.configure(text=f"Saved in: {folder}  ({filename})  •  Autosaved")
+                    self.set_status(f"Auto-saved: {self.current_project_path}")
+                    self._clear_autosave_draft()
+                    return True
+            else:
+                os.makedirs(os.path.dirname(self._autosave_draft_path), exist_ok=True)
+                if self.designer.save_project(self._autosave_draft_path):
+                    self.lbl_project_path.configure(text=f"Draft auto-saved: {self._autosave_draft_path}")
+                    return True
+        except Exception as e:
+            logger.warning(f"Autosave failed: {e}")
+        finally:
+            self._autosaving = False
+        return False
+
+    def on_autosave_toggle(self):
+        enabled = self.autosave_var.get()
+        if enabled:
+            self.set_status("Autosave enabled")
+            if self.is_dirty:
+                self._perform_autosave()
+        else:
+            self._cancel_scheduled_autosave()
+            self.set_status("Autosave disabled")
+
+    def _check_restore_autosave_draft(self):
+        if not os.path.exists(self._autosave_draft_path) or self.current_project_path or self.designer.elements:
+            return
+        try:
+            with open(self._autosave_draft_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if not data.get("elements"):
+                self._clear_autosave_draft()
+                return
+        except Exception:
+            return
+
+        if messagebox.askyesno(
+            "Recover Unsaved Draft",
+            "An auto-saved draft from a previous session was found.\nDo you want to restore it?",
+        ):
+            if self.designer.load_project(self._autosave_draft_path):
+                self.selected_element_id = None
+                self.update_layer_list()
+                self.update_preview()
+                self.update_control_state()
+                self._reset_history()
+                self._set_dirty(True)
+                self.set_status("Recovered auto-saved draft")
+        else:
+            self._clear_autosave_draft()
 
     def _commit_history_step(self, prev_snapshot=None, mark_dirty=True):
         snap = prev_snapshot if prev_snapshot is not None else self._last_snapshot
@@ -877,7 +970,7 @@ class LabelApp(ctk.CTk):
         self._last_snapshot = self._capture_history_state()
         self._update_history_buttons()
         if mark_dirty:
-            self._set_dirty(True)
+            self._set_dirty(True, immediate_autosave=True)
 
     def _flush_pending_history(self):
         current = self._capture_history_state()
@@ -906,7 +999,7 @@ class LabelApp(ctk.CTk):
             self.update_layer_list()
             self.update_control_state()
             self.update_preview()
-        self._set_dirty(True)
+        self._set_dirty(True, immediate_autosave=True)
         self._update_history_buttons()
 
     def undo_action(self):
@@ -926,6 +1019,9 @@ class LabelApp(ctk.CTk):
         self.set_status("Redo")
 
     def _confirm_discard_changes(self):
+        self._cancel_scheduled_autosave()
+        if self.autosave_var.get() and self.is_dirty and self.current_project_path:
+            self._perform_autosave()
         if not self.is_dirty:
             return True
         choice = messagebox.askyesnocancel(
@@ -937,11 +1033,13 @@ class LabelApp(ctk.CTk):
         if choice is True:
             self.save_project_action()
             return not self.is_dirty
+        self._clear_autosave_draft()
         return True
 
     def on_closing(self):
         self._close_inline_text_editor(commit=True)
         if self._confirm_discard_changes():
+            self._cancel_scheduled_autosave()
             self.destroy()
 
     def set_status(self, message):
@@ -1955,6 +2053,7 @@ class LabelApp(ctk.CTk):
         self.designer.clear()
         self.selected_element_id = None
         self._set_current_project(None)
+        self._clear_autosave_draft()
         self._reset_history()
         self.update_preview()
         self.update_layer_list()
@@ -1968,6 +2067,11 @@ class LabelApp(ctk.CTk):
     def _default_recent_store_path():
         base = os.environ.get("APPDATA") or os.path.expanduser("~")
         return os.path.join(base, "LabelPrinterStudio", "recent_files.json")
+
+    @staticmethod
+    def _default_autosave_draft_path():
+        base = os.environ.get("APPDATA") or os.path.expanduser("~")
+        return os.path.join(base, "LabelPrinterStudio", "autosave_draft.json")
 
     def _load_recent_files(self):
         try:
@@ -2019,6 +2123,7 @@ class LabelApp(ctk.CTk):
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Save", accelerator="Ctrl+S", command=self.save_project_action)
         self.file_menu.add_command(label="Save As...", accelerator="Ctrl+Shift+S", command=self.save_project_as_action)
+        self.file_menu.add_checkbutton(label="Autosave", variable=self.autosave_var, command=self.on_autosave_toggle)
         self.file_menu.add_separator()
         self.file_menu.add_command(label="Print...", accelerator="Ctrl+P", command=self.print_label)
         self.file_menu.add_separator()
@@ -2100,6 +2205,7 @@ class LabelApp(ctk.CTk):
             self._set_current_project(file_path)
             norm_path = self.current_project_path
             self._add_recent_file(norm_path)
+            self._clear_autosave_draft()
             self._set_dirty(False)
             self._last_snapshot = self._capture_history_state()
             logger.info(f"UI: Saved project to {norm_path}")

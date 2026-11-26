@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.0.1] - 2026-11-26
+### Added
+- **Autosave & Draft Recovery**: Automatically saves every change immediately to the active `.json` project (with `250 ms` debounce during live typing/slider motion), or to a recovery draft in `%APPDATA%\LabelPrinterStudio\autosave_draft.json` before the first manual save.
+- **Autosave Toggle**: Added `Autosave` checkbutton in the `File` menu and `Autosaved` status indicator in the status bar.
+
 ## [2.0.0] - 2026-11-26
 ### Added
 - **Windows 11 Fluent Design UI**: Redesigned 3-panel studio layout (Add/Layers, Interactive Canvas, Properties Inspector) with Light/Dark/System theme switching and native Windows 11 titlebar styling.
