@@ -1,38 +1,34 @@
-from label_designer import LabelDesigner
-import logging_config
 import os
+import sys
+import tempfile
 
-logging_config.setup_logging()
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def test_rotation():
-    print("Testing Rotation Logic...")
+from app.label_designer import LabelDesigner
+
+
+def test_rotation(tmp_path=None):
     designer = LabelDesigner()
-    
-    # 1. Add Text
+
     txt = designer.add_text("TEST ROTATION")
-    print(f"Added text id: {txt['id']}, Initial Rotation: {txt.get('rotation')}")
-    designer.save_image("debug_step1_initial.png")
-    
-    # 2. Rotate 90
-    print("Rotating 90 degrees...")
-    designer.update_element_rotation(txt['id'], 90)
-    
-    # Verify internal state
-    el = designer.get_element(txt['id'])
-    print(f"Post-update Rotation: {el.get('rotation')}")
-    
-    # Save Image
-    designer.save_image("debug_step2_rotated_90.png")
-    print("Saved debug_step2_rotated_90.png")
-    
-    # 3. Rotate 180
-    print("Rotating 180 degrees...")
-    designer.update_element_rotation(txt['id'], 180)
-    designer.save_image("debug_step3_rotated_180.png")
-    
+    assert txt.get("rotation") == 0
+
+    for angle in (90, 180, 270, 0):
+        designer.update_element_rotation(txt["id"], angle)
+        el = designer.get_element(txt["id"])
+        assert el.get("rotation") == angle
+
+    if tmp_path is None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            out_path = os.path.join(tmp_dir, "rotated.png")
+            designer.save_image(out_path)
+            assert os.path.exists(out_path)
+    else:
+        out_path = str(tmp_path / "rotated.png")
+        designer.save_image(out_path)
+        assert os.path.exists(out_path)
+
+
 if __name__ == "__main__":
-    try:
-        test_rotation()
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    test_rotation()
+    print("Rotation tests passed!")

@@ -7,8 +7,9 @@ A simple desktop application for designing and printing labels, built with Pytho
 - **Customization**:
     - Change fonts and font sizes.
     - Scale images.
-    - **Rotate** elements (Up, Left, Down, Right).
-    - Drag and drop positioning.
+    - **Rotate** elements (`0°`, `90°`, `180°`, `270°`).
+    - Drag and drop positioning directly on the canvas, arrow-key nudging, X/Y sliders, and one-click centering.
+    - Layer reordering (`↑` / `↓`), zoom presets (`1x`–`2.5x`), and Light/Dark/System Windows 11 theme.
 - **Project Management**:
     - **Save** designs to `.json` project files.
     - **Load** existing projects.
@@ -33,6 +34,7 @@ Run the application:
 ```bash
 python run.py
 ```
+Or double-click `run.bat` on Windows to launch without building.
 
 ### Building the Executable (Windows)
 

@@ -19,44 +19,47 @@ def list_printers():
 
 def print_image(image_path, printer_name, copies=1):
     """Prints the image to the specified printer."""
+    copies = max(1, int(copies))
     logger.info(f"Attempting to print '{image_path}' to '{printer_name}' with {copies} copies.")
+    hPrinter = None
+    hDC = None
     try:
         # Open Printer
         hPrinter = win32print.OpenPrinter(printer_name)
+        # Create Device Context
+        hDC = win32ui.CreateDC()
+        hDC.CreatePrinterDC(printer_name)
+
+        img = Image.open(image_path)
+        logger.debug(f"Image loaded. Size: {img.size}")
+
+        # Get printable area
+        printable_area = hDC.GetDeviceCaps(win32con.HORZRES), hDC.GetDeviceCaps(win32con.VERTRES)
+        printer_size = printable_area
+
+        dib = ImageWin.Dib(img)
+        hDC.StartDoc("Label Print Job")
         try:
-            # Create Device Context
-            hDC = win32ui.CreateDC()
-            hDC.CreatePrinterDC(printer_name)
-
-            img = Image.open(image_path)
-            logger.debug(f"Image loaded. Size: {img.size}")
-            
-            # Loop for copies
-            for i in range(copies):
-                hDC.StartDoc(f"Label Print Job {i+1}")
+            for _ in range(copies):
                 hDC.StartPage()
-
-                # Get printable area
-                printable_area = hDC.GetDeviceCaps(win32con.HORZRES), hDC.GetDeviceCaps(win32con.VERTRES)
-                printer_size = printable_area
-                
-                # Draw image (scale to fit if necessary, or 1:1)
-                # For label printers, we usually want 1:1 mapping if DPI matches, 
-                # or scale to page if we treat the page as the label.
-                # Here we simply draw it to the DC. PIL ImageWin makes this easy.
-                
-                dib = ImageWin.Dib(img)
                 dib.draw(hDC.GetHandleOutput(), (0, 0, printer_size[0], printer_size[1]))
-
                 hDC.EndPage()
-                hDC.EndDoc()
-                
-            hDC.DeleteDC()
-            logger.info("Print job sent successfully.")
-            return True
         finally:
-            win32print.ClosePrinter(hPrinter)
-            
+            hDC.EndDoc()
+
+        logger.info("Print job sent successfully.")
+        return True
     except Exception as e:
         logger.error(f"Error printing: {e}", exc_info=True)
         return False
+    finally:
+        if hDC is not None:
+            try:
+                hDC.DeleteDC()
+            except Exception:
+                pass
+        if hPrinter is not None:
+            try:
+                win32print.ClosePrinter(hPrinter)
+            except Exception:
+                pass

@@ -1,57 +1,50 @@
-from label_designer import LabelDesigner
-import logging_config
 import os
+import sys
+import tempfile
 
-logging_config.setup_logging()
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-def test_features():
-    print("Testing Save/Load/Duplicate...")
-    designer = LabelDesigner()
-    
-    # 1. Add Element
-    txt = designer.add_text("ORIGINAL")
-    txt_id = txt['id']
-    print(f"Added text {txt_id}: {txt['content']}")
-    
+from app.label_designer import LabelDesigner
+
+
+def test_save_load_duplicate(tmp_path=None):
+    designer = LabelDesigner(width_mm=60.0, height_mm=40.0)
+
+    # 1. Add Element with emoji (verifies UTF-8 save/load on Windows)
+    txt = designer.add_text("ORIGINAL 🐔")
+    txt_id = txt["id"]
+
     # 2. Duplicate
     dup = designer.duplicate_element(txt_id)
-    if dup:
-        print(f"Duplicated {txt_id} -> {dup['id']}")
-        assert dup['id'] != txt_id
-        assert dup['x'] == txt['x'] + 20
-        assert dup['y'] == txt['y'] + 20
-    else:
-        print("Duplicate failed!")
-        return
+    assert dup is not None
+    assert dup["id"] != txt_id
+    assert dup["x"] == txt["x"] + 20
+    assert dup["y"] == txt["y"] + 20
 
     # 3. Save
-    save_path = "test_project.json"
-    if designer.save_project(save_path):
-        print(f"Saved to {save_path}")
+    if tmp_path is None:
+        tmp_dir = tempfile.TemporaryDirectory()
+        save_path = os.path.join(tmp_dir.name, "test_project.json")
     else:
-        print("Save failed!")
-        return
-        
-    # 4. Clear and Load
-    designer.clear()
-    print("Cleared elements.")
-    assert len(designer.elements) == 0
-    
-    if designer.load_project(save_path):
-        print(f"Loaded from {save_path}")
-        assert len(designer.elements) == 2
-        print("Elements loaded successfully!")
-    else:
-        print("Load failed!")
-        
-    # Cleanup
-    if os.path.exists(save_path):
-        os.remove(save_path)
-        print("Cleaned up test file.")
+        tmp_dir = None
+        save_path = str(tmp_path / "test_project.json")
+
+    try:
+        assert designer.save_project(save_path) is True
+
+        # 4. Clear and Load into fresh designer
+        reloaded = LabelDesigner()
+        assert reloaded.load_project(save_path) is True
+        assert len(reloaded.elements) == 2
+        assert reloaded.elements[0]["content"] == "ORIGINAL 🐔"
+        assert reloaded.width_mm == 60.0
+        assert reloaded.height_mm == 40.0
+        assert reloaded.next_id > dup["id"]
+    finally:
+        if tmp_dir is not None:
+            tmp_dir.cleanup()
+
 
 if __name__ == "__main__":
-    try:
-        test_features()
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
+    test_save_load_duplicate()
+    print("Save/Load/Duplicate tests passed!")

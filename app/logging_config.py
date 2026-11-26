@@ -9,7 +9,7 @@ def setup_logging():
     if getattr(sys, 'frozen', False):
         application_path = os.path.dirname(sys.executable)
     else:
-        application_path = os.path.dirname(os.path.abspath(__file__))
+        application_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
     log_file = os.path.join(application_path, 'app.log')
 
@@ -18,7 +18,7 @@ def setup_logging():
         level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file),
+            logging.FileHandler(log_file, encoding='utf-8'),
             logging.StreamHandler(sys.stdout)
         ]
     )
